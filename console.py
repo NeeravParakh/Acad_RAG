@@ -17,9 +17,9 @@ from groq import Groq
 from pdf2image import convert_from_path
 import PIL.Image
 from google import genai
+import time
 
-
-MAKE_CHROMA = False
+MAKE_CHROMA = True
 FILE_PATH = r'files'
 CONTEXT = ""
 ANSWER_L = "L" #L or S 
@@ -36,4 +36,4 @@ MODEL = "deepseek-r1-distill-llama-70b"
 client = Groq(api_key = "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")
 EMBEDDING_MODEL = r"D:\Projects\model\all-MiniLM-L6-v2"
 EMBEDDING_TOKENIZER = r"D:\Projects\tokenizer\all-MiniLM-L6-v2"
-PERSIST_DIRECTORY = r"chroma_db"
+PERSIST_DIRECTORY = r"chroma_db_1"

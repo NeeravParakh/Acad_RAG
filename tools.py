@@ -96,6 +96,50 @@ def generate_tokens(s, file_path):
         )
     return None
 
+def generate_text_from_image(image, client_g, MODEL_G, IMAGE_PROMPT, max_retries=5):
+    """Attempts to generate text from an image with retries on rate limit errors."""
+    retry_delay = 2  # Initial delay in seconds
+    for attempt in range(max_retries):
+        try:
+            response = client_g.models.generate_content(
+                model=MODEL_G,
+                contents=[IMAGE_PROMPT, image]
+            )
+            return response.text
+        except KeyError as e:
+            if "rate limit" in str(e).lower():
+                st.warning(f"Rate limit hit. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                st.error(f"An error occurred: {e}")
+                return None
+    st.error("Max retries reached. Skipping this image.")
+    return None
+
+
+def process_pdf(file_path):
+    doc = fitz.open(file_path)
+    raw_text = []
+    
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        pix = page.get_pixmap(matrix=fitz.Matrix(4, 4))  # Increase resolution
+        image_path = f'page_{page_num}.png'
+        pix.save(image_path)
+        
+        try:
+            image = PIL.Image.open(image_path)
+            text = generate_text_from_image(image)
+            if text:
+                raw_text.append(text)
+                st.markdown(text)
+        finally:
+            os.remove(image_path)  # Ensure file cleanup
+    
+    return raw_text
+
+
 def extract_text_from_file(file_path):
     file_extension = os.path.splitext(file_path)[1].lower()
     try:
@@ -104,18 +148,33 @@ def extract_text_from_file(file_path):
         # RAW_TEXT IS IN UNICODE SO DON'T PRINT OR TRY TO ENCODE
         # IF WRITING IN TEXT FILE THEN USE ENCODING = "UTF-8"
         if file_extension == '.pdf':
+            #process_pdf(file_path)
             doc = fitz.open(file_path)
-            raw_text = []
+            response = []
             for page_num in range(doc.page_count):
                 page = doc[page_num]
                 pix = page.get_pixmap(matrix=fitz.Matrix(4, 4))  # Increase resolution by scaling
                 pix.save(f'page_{page_num}.png')  # Save with high DPI
                 image = PIL.Image.open(f'page_{page_num}.png')
-                response = client_g.models.generate_content(
-                model=MODEL_G,
-                contents=[IMAGE_PROMPT, image])
-                raw_text.append(response.text)
-                st.markdown(response.text)
+                retry_delay = 2  # Initial delay in seconds
+                for attempt in range(5):
+                    try:
+                        a = client_g.models.generate_content(
+                            model=MODEL_G,
+                            contents=[IMAGE_PROMPT, image]
+                        )
+                        response.append(a.text)
+                        st.markdown(a.text)
+                        break
+                    
+                    except KeyError as e:
+                        if "rate limit" in str(e).lower():
+                            st.warning(f"Rate limit hit. Retrying in {retry_delay} seconds...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            st.error(f"An error occurred: {e}")
+                
                 os.remove(f'page_{page_num}.png')
 
             # raw_text = ""
@@ -124,7 +183,7 @@ def extract_text_from_file(file_path):
             #     page = doc[page_num]
             #     text = page.get_text("text")
             #     raw_text += (text + "\n")
-            return raw_text
+            return response
         else:
             print("Skipped")
             return ''
